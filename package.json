@@ -1,0 +1,31 @@
+{
+  "name": "generate-evoucher",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/server.js",
+    "dev": "tsc && node dist/server.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/sak85/generate-eVoucher.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/sak85/generate-eVoucher/issues"
+  },
+  "homepage": "https://github.com/sak85/generate-eVoucher#readme",
+  "dependencies": {
+    "@types/express": "^5.0.6",
+    "@types/node": "^25.0.0",
+    "csv-writer": "^1.6.0",
+    "express": "^5.2.1",
+    "graphql-request": "^7.3.5",
+    "typescript": "^5.9.3"
+  }
+}

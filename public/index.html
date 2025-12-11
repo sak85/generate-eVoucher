@@ -6,70 +6,223 @@
     <title>Generate eVouchers</title>
     <style>
         body { font-family: Arial, sans-serif; margin: 20px; }
-        form { max-width: 400px; }
-        label { display: block; margin-top: 10px; }
-        input, select { width: 100%; padding: 8px; margin-top: 5px; }
-        button { margin-top: 20px; padding: 10px; background: #007bff; color: white; border: none; cursor: pointer; }
+        form { max-width: 400px; background: #f5f5f5; padding: 20px; border-radius: 8px; }
+        label { display: block; margin-top: 10px; font-weight: bold; }
+        input, select { width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ddd; border-radius: 4px; }
+        button { margin-top: 20px; padding: 12px; width: 100%; background: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px; }
         button:hover { background: #0056b3; }
-        #result { margin-top: 20px; }
+        button:disabled { background: #ccc; cursor: not-allowed; }
+        #result { margin-top: 30px; }
+        table { border-collapse: collapse; width: 100%; max-width: 800px; margin-top: 20px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #ddd; padding: 12px; text-align: left; }
+        th { background-color: #007bff; color: white; }
+        tr:nth-child(even) { background-color: #f9f9f9; }
+        .error { color: #dc3545; padding: 10px; background: #f8d7da; border: 1px solid #f5c6cb; border-radius: 4px; }
+        .success { color: #28a745; padding: 10px; background: #d4edda; border: 1px solid #c3e6cb; border-radius: 4px; }
+        .loading { color: #6c757d; font-style: italic; padding: 10px; }
+        .actions { margin-top: 20px; display: flex; gap: 10px; }
+        .actions button { width: auto; padding: 10px 20px; }
+        .download-btn { background: #28a745; }
+        .download-btn:hover { background: #218838; }
+        .copy-btn { background: #6c757d; }
+        .copy-btn:hover { background: #5a6268; }
     </style>
 </head>
 <body>
-    <h1>Generate eVouchers</h1>
-    <form id="voucherForm">
-        <label for="currency">Currency:</label>
-        <select id="currency" name="currency" required>
-            <option value="USD">USD</option>
-            <option value="EUR">EUR</option>
-            <option value="GBP">GBP</option>
-        </select>
+<h1>Generate eVouchers</h1>
+<form id="voucherForm">
+    <label for="currency">Currency:</label>
+    <select id="currency" name="currency" required>
+        <option value="USD">USD</option>
+        <option value="EUR">EUR</option>
+        <option value="GBP">GBP</option>
+    </select>
 
-        <label for="count">Number of Vouchers:</label>
-        <input type="number" id="count" name="count" min="1" max="100" required>
+    <label for="count">Number of Vouchers:</label>
+    <input type="number" id="count" name="count" min="1" max="100" value="1" required>
 
-        <label for="amount">Amount:</label>
-        <input type="number" id="amount" name="amount" min="0.01" step="0.01" required>
+    <label for="amount">Amount per Voucher:</label>
+    <input type="number" id="amount" name="amount" min="0.01" step="0.01" value="10.00" required>
 
-        <button type="submit">Generate Vouchers</button>
-    </form>
-    <div id="result"></div>
+    <button type="submit" id="submitBtn">Generate Vouchers</button>
+</form>
 
-    <script>
-        document.getElementById('voucherForm').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const currency = document.getElementById('currency').value;
-            const count = document.getElementById('count').value;
-            const amount = document.getElementById('amount').value;
+<div id="result"></div>
 
-            const resultDiv = document.getElementById('result');
-            resultDiv.textContent = 'Generating vouchers...';
+<script>
+    const form = document.getElementById('voucherForm');
+    const submitBtn = document.getElementById('submitBtn');
+    const resultDiv = document.getElementById('result');
 
-            try {
-                const response = await fetch('/generate', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ currency, count: parseInt(count), amount: parseFloat(amount) })
-                });
-                const data = await response.json();
-                if (response.ok) {
-                    if (!Array.isArray(data)) {
-                        resultDiv.textContent = `Unexpected response: ${JSON.stringify(data)}`;
-                        return;
-                    }
-                    const vouchers = data;
-                    let html = '<table border="1"><thead><tr><th>Voucher Code</th><th>Internal Reference</th><th>Currency</th><th>Amount</th></tr></thead><tbody>';
-                    vouchers.forEach(v => {
-                        html += `<tr><td>${v.voucherCode}</td><td>${v.internalReference}</td><td>${v.currency}</td><td>${v.amount}</td></tr>`;
-                    });
-                    html += '</tbody></table>';
-                    resultDiv.innerHTML = html;
+    form.addEventListener('submit', async (e) => {
+        e.preventDefault();
+
+        // Get form values
+        const currency = document.getElementById('currency').value;
+        const count = parseInt(document.getElementById('count').value);
+        const amount = parseFloat(document.getElementById('amount').value);
+
+        // Validate inputs
+        if (!currency || !count || !amount) {
+            showError('Please fill all fields');
+            return;
+        }
+
+        if (count < 1 || count > 100) {
+            showError('Number of vouchers must be between 1 and 100');
+            return;
+        }
+
+        if (amount <= 0) {
+            showError('Amount must be greater than 0');
+            return;
+        }
+
+        // Disable button and show loading
+        submitBtn.disabled = true;
+        submitBtn.textContent = 'Generating...';
+        resultDiv.innerHTML = '<p class="loading">Generating vouchers... Please wait.</p>';
+
+        try {
+            // Send request to server
+            const response = await fetch('/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                    currency,
+                    count,
+                    amount
+                })
+            });
+
+            const data = await response.json();
+
+            // In your form submit event handler:
+            if (response.ok) {
+                // Check if we received an array of vouchers
+                if (Array.isArray(data)) {
+                    displayVouchers(data);
                 } else {
-                    resultDiv.textContent = `Error: ${data.error}`;
+                    showError(`Unexpected response format: ${JSON.stringify(data)}`);
                 }
-            } catch (error) {
-                resultDiv.textContent = `Error: ${error.message}`;
+            } else {
+                // Server returned an error
+                showError(`Error: ${data.error || 'Unknown error occurred'}`);
             }
+        } catch (error) {
+            // Network or parsing error
+            showError(`Request failed: ${error.message}`);
+            console.error('Error:', error);
+        } finally {
+            // Re-enable button
+            submitBtn.disabled = false;
+            submitBtn.textContent = 'Generate Vouchers';
+        }
+    });
+
+    function displayVouchers(vouchers) {
+        if (vouchers.length === 0) {
+            resultDiv.innerHTML = '<p class="error">No vouchers were generated</p>';
+            return;
+        }
+
+        // Create summary
+        const totalAmount = vouchers.reduce((sum, v) => sum + v.amount, 0);
+        const summary = `<p class="success">✅ Successfully generated ${vouchers.length} voucher${vouchers.length > 1 ? 's' : ''} with total amount: ${totalAmount.toFixed(2)} ${vouchers[0].currency}</p>`;
+
+        // Create table
+        let html = summary + '<table>';
+        html += '<thead><tr><th>#</th><th>Voucher Code</th><th>Internal Reference</th><th>Currency</th><th>Amount</th></tr></thead>';
+        html += '<tbody>';
+
+        vouchers.forEach((voucher, index) => {
+            html += `<tr>
+                    <td>${index + 1}</td>
+                    <td><strong>${voucher.voucherCode || 'N/A'}</strong></td>
+                    <td><code>${voucher.internalReference || 'N/A'}</code></td>
+                    <td>${voucher.currency}</td>
+                    <td>${voucher.amount.toFixed(2)}</td>
+                </tr>`;
         });
-    </script>
+
+        html += '</tbody></table>';
+
+        // Add action buttons
+        html += `
+                <div class="actions">
+                    <button onclick="downloadAsCSV()" class="download-btn">Download CSV</button>
+                    <button onclick="copyToClipboard()" class="copy-btn">Copy to Clipboard</button>
+                </div>
+            `;
+
+        resultDiv.innerHTML = html;
+
+        // Store vouchers globally for download/copy functions
+        window.currentVouchers = vouchers;
+    }
+
+    function downloadAsCSV() {
+        const vouchers = window.currentVouchers;
+        if (!vouchers || vouchers.length === 0) {
+            alert('No vouchers to download');
+            return;
+        }
+
+        const headers = ['Voucher Code', 'Internal Reference', 'Currency', 'Amount'];
+        const csvRows = [];
+
+        // Add headers
+        csvRows.push(headers.join(','));
+
+        // Add data rows
+        vouchers.forEach(v => {
+            csvRows.push([
+                `"${v.voucherCode || ''}"`,
+                `"${v.internalReference || ''}"`,
+                `"${v.currency}"`,
+                v.amount.toFixed(2)
+            ].join(','));
+        });
+
+        // Create and trigger download
+        const csvContent = csvRows.join('\n');
+        const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `vouchers_${vouchers[0].currency}_${new Date().toISOString().slice(0, 19).replace(/[:]/g, '-')}.csv`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+    }
+
+    function copyToClipboard() {
+        const vouchers = window.currentVouchers;
+        if (!vouchers || vouchers.length === 0) {
+            alert('No vouchers to copy');
+            return;
+        }
+
+        let text = 'Voucher Code,Internal Reference,Currency,Amount\n';
+
+        vouchers.forEach(v => {
+            text += `${v.voucherCode || ''},${v.internalReference || ''},${v.currency},${v.amount.toFixed(2)}\n`;
+        });
+
+        navigator.clipboard.writeText(text).then(() => {
+            alert('✅ Vouchers copied to clipboard!');
+        }).catch(err => {
+            console.error('Failed to copy: ', err);
+            alert('❌ Failed to copy to clipboard');
+        });
+    }
+
+    function showError(message) {
+        resultDiv.innerHTML = `<p class="error">❌ ${message}</p>`;
+    }
+</script>
 </body>
 </html>

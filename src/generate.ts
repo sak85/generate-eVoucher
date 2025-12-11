@@ -1,8 +1,6 @@
 import { GraphQLClient, gql } from 'graphql-request';
-import { createObjectCsvWriter } from 'csv-writer';
 
 const endpoint = 'https://payment-gateway.stg.eurostar.com/graphql';
-
 const client = new GraphQLClient(endpoint);
 
 function getMutationTemplate(currency: string, amount: number) {
@@ -10,14 +8,14 @@ function getMutationTemplate(currency: string, amount: number) {
     mutation {
       createVoucher (
         amount: ${amount}
-        currency: "${currency}"
+        currency: ${currency}
         type: LDV
         validUntil: "2028-11-01T00:59:59"
       ){
         voucherCode: reference
         internalReference: alias
         currency
-        amount
+        # amount is NOT included here because API doesn't return it
       }
     }
   `;
@@ -27,7 +25,7 @@ interface Voucher {
   voucherCode: string;
   internalReference: string;
   currency: string;
-  amount: number;
+  amount: number; // We'll add this manually
 }
 
 export async function generateVouchers(currency: string, count: number, amount: number): Promise<Voucher[]> {
@@ -36,27 +34,19 @@ export async function generateVouchers(currency: string, count: number, amount: 
   for (let i = 0; i < count; i++) {
     try {
       const data = await client.request(getMutationTemplate(currency, amount));
-      vouchers.push(data.createVoucher);
+      // Create voucher object with amount added manually
+      const voucher = {
+        voucherCode: data.createVoucher.voucherCode,
+        internalReference: data.createVoucher.internalReference,
+        currency: data.createVoucher.currency,
+        amount: amount // Add the amount we requested
+      };
+      vouchers.push(voucher);
     } catch (error) {
       console.error(`Error creating voucher ${i + 1}:`, error);
       throw error;
     }
   }
-
-  const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-  const filename = `vouchers_${currency}_${timestamp}.csv`;
-
-  const csvWriter = createObjectCsvWriter({
-    path: filename,
-    header: [
-      { id: 'voucherCode', title: 'Voucher Code' },
-      { id: 'internalReference', title: 'Internal Reference' },
-      { id: 'currency', title: 'Currency' },
-      { id: 'amount', title: 'Amount' }
-    ]
-  });
-
-  await csvWriter.writeRecords(vouchers);
 
   return vouchers;
 }
